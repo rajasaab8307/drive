@@ -73,12 +73,6 @@
   .clear-search{background:transparent;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer;padding:0 8px;display:none}
   .clear-search.visible{display:block}
 
-  /* ─── CAMERA BUTTON ─── */
-  .action-row{display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap}
-  .camera-btn{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:30px;padding:10px 18px;color:var(--text);cursor:pointer;transition:var(--T)}
-  .camera-btn:hover{border-color:var(--accent)}
-  .camera-btn i{font-size:1.2rem}
-
   /* ─── NOTICE BANNER ─── */
   #local-notice{display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.92);backdrop-filter:blur(8px);align-items:center;justify-content:center;padding:16px}
   #local-notice.show{display:flex}
@@ -130,7 +124,6 @@
   .dz h3{font-family:'Playfair Display',serif;font-size:1.2rem;margin-bottom:4px}
   .dz p{color:var(--muted);font-size:.8rem}
   #fi{display:none}
-  #camera-input{display:none}
 
   /* ── UPLOAD PROGRESS ── */
   .pw{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:24px;display:none}
@@ -364,7 +357,6 @@
       <p>tap to browse — images, videos, music, documents & more</p>
     </div>
     <input type="file" id="fi" multiple onchange="upload(this.files)"/>
-    <input type="file" id="camera-input" accept="image/*" capture="environment" onchange="uploadCameraPhoto(this.files)"/>
 
     <!-- UPLOAD PROGRESS -->
     <div class="pw" id="pw">
@@ -386,17 +378,12 @@
       <div class="stg-segs" id="stg-segs"></div>
     </div>
 
-    <!-- ACTION ROW WITH CAMERA AND SEARCH -->
-    <div class="action-row">
-      <button class="camera-btn" onclick="openCamera()">
-        <i>📸</i> <span>Take Photo</span>
-      </button>
-      <div class="search-bar">
-        <i>🔍</i>
-        <input type="text" id="search-input" placeholder="Search files..." oninput="searchFiles()"/>
-        <button class="clear-search" id="clear-search" onclick="clearSearch()">✕</button>
-        <button onclick="searchFiles()">Search</button>
-      </div>
+    <!-- SEARCH BAR -->
+    <div class="search-bar">
+      <i>🔍</i>
+      <input type="text" id="search-input" placeholder="Search files..." oninput="searchFiles()"/>
+      <button class="clear-search" id="clear-search" onclick="clearSearch()">✕</button>
+      <button onclick="searchFiles()">Search</button>
     </div>
 
     <div class="ctrl">
@@ -477,7 +464,7 @@
       <button class="doc-preview-close" onclick="closeDocPreview()">✕</button>
     </div>
     <div class="doc-preview-content">
-      <iframe id="doc-preview-iframe" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads" allowfullscreen></iframe>
+      <iframe id="doc-preview-iframe" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-top-navigation" allowfullscreen></iframe>
     </div>
     <div class="doc-preview-footer">
       <button onclick="downloadCurrentDoc()">⬇ Download</button>
@@ -631,7 +618,7 @@ function isDocument(name) {
 
 function canPreview(name) {
   const ext = name.split('.').pop()?.toLowerCase() || '';
-  const previewExts = ['pdf', 'txt', 'md', 'json', 'xml', 'html', 'htm', 'css', 'js', 'csv', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
+  const previewExts = ['pdf', 'txt', 'md', 'json', 'xml', 'html', 'htm', 'css', 'js', 'csv'];
   return previewExts.includes(ext);
 }
 
@@ -742,7 +729,10 @@ async function dbxThumb(pathLower){
   const res=await fetch('https://content.dropboxapi.com/2/files/get_thumbnail_v2',{method:'POST',headers:{'Authorization':'Bearer '+tok(),'Dropbox-API-Arg':JSON.stringify({resource:{'.tag':'path',path:pathLower},format:{'.tag':'jpeg'},size:{'.tag':'w480h320'},mode:{'.tag':'fitone_bestfit'}})}});
   if(!res.ok)throw new Error('thumb');return URL.createObjectURL(await res.blob());
 }
-async function dbxTempLink(path){const d=await dbxRPC('files/get_temporary_link',{path});return d.link;}
+async function dbxTempLink(path){
+  const d=await dbxRPC('files/get_temporary_link',{path});
+  return d.link;
+}
 
 /* ── STORAGE BAR ── */
 async function loadStorage(){
@@ -879,15 +869,6 @@ async function saveSett(){
 }
 function sm(msg,ok=false){const el=document.getElementById('smsg');el.textContent=msg;el.className=ok?'ok':'';}
 
-/* ── CAMERA UPLOAD ── */
-function openCamera() {
-  document.getElementById('camera-input').click();
-}
-
-async function uploadCameraPhoto(files) {
-  await upload(files);
-}
-
 /* ── UPLOAD — all file types ── */
 function dzo(e){e.preventDefault();document.getElementById('dz').classList.add('over')}
 function dzl(){document.getElementById('dz').classList.remove('over')}
@@ -910,7 +891,6 @@ async function upload(files){
   setTimeout(()=>{pw.style.display='none';pf.style.width='0%';},800);
   if(!failed)toast(`${valid.length} file(s) uploaded! ✓`);
   document.getElementById('fi').value='';
-  document.getElementById('camera-input').value='';
   loadFiles();loadStorage();
 }
 
@@ -973,7 +953,7 @@ function buildCard(e){
   return c;
 }
 
-/* ── DOCUMENT PREVIEW ── */
+/* ── DOCUMENT PREVIEW (FIXED) ── */
 let currentDocPath = '';
 let currentDocName = '';
 
@@ -991,7 +971,8 @@ async function openDocPreview(path, name) {
     
     // Handle different document types
     if (ext === 'pdf') {
-      iframe.src = url + '#view=FitH';
+      // For PDFs, use Google Docs Viewer as fallback
+      iframe.src = `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
     } else if (['txt', 'md', 'json', 'xml', 'html', 'htm', 'css', 'js', 'csv'].includes(ext)) {
       // For text files, fetch and display as plain text
       try {
@@ -1000,17 +981,19 @@ async function openDocPreview(path, name) {
         const blob = new Blob([text], { type: 'text/plain' });
         iframe.src = URL.createObjectURL(blob);
       } catch (e) {
+        // Fallback to direct link
         iframe.src = url;
       }
     } else {
-      // For other documents, try direct link
-      iframe.src = url;
+      // For other documents, use Google Docs Viewer
+      iframe.src = `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
     }
     
     document.getElementById('doc-preview-modal').classList.add('on');
     document.body.style.overflow = 'hidden';
   } catch (e) {
-    toast('Could not preview document', 'e');
+    console.error('Preview error:', e);
+    toast('Could not preview document. Try downloading instead.', 'e');
   }
 }
 
